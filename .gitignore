@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# plots
+TQwithx_s038.pdf
+TQwithx_s095.pdf
