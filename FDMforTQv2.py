@@ -104,7 +104,9 @@ def plotTx(xvec, Tvec, x_s):
 
 
 def getAbF(N, x_s, ifprint=True, useavg=True):
-    # function to get the FDM matrix A
+    # function to get the FDM matrix A and vectors b and F
+    # also returns k, index of x_sk on grid, and x_sk, the closest value to x_s on the grid
+    # which is used a x_s on the grid!
     # N - Number of interior nodes
     # x_s - position of the ice-cap, x_S will be restricted to be on the grid.
     # ifprint - pint info to user, default True
@@ -168,8 +170,9 @@ def getAbF(N, x_s, ifprint=True, useavg=True):
 
     # BC x=1
     if not useavg:
-        A[N+1, N+1] = D / h + B_out
-        A[N+1, N] = - D / h
+        # backward difference, (1 - x ^ 2) = 0
+        A[N+1, N+1] = 2 * D / h + B_out
+        A[N+1, N] = - 2 * D / h
     # enforce that the average is T_0
     if useavg:
         A[N+1, :-1] = np.ones(N+2) / (N+2)
