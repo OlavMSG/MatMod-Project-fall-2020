@@ -95,7 +95,11 @@ def plotTx(xvec, Tvec, x_s):
     ax.set_title("Temperature, $T(x)$")
     # adjust
     plt.subplots_adjust(hspace=0.3)
+
+    """Please uncomment to save the plot"""
     # plt.savefig("TQwithx_s0" + str(int(round(x_s, 2) * 100)) + ".pdf", bbox_inches='tight')
+
+    # show the plot
     plt.show()
 
 
