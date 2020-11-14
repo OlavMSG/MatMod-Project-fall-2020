@@ -41,42 +41,47 @@ T_s = -10
 T_0 = 14.97
 
 
-def plotTx(xvec, Tvec, t):
+def plotTx(xvec, deltaT_dict, t_end, text, omega):
     # function to make the plot
     # xvec - the x-s values
-    # Tvec - the T-values
-    # t - the time
+    # deltaT_dict - dictionary of ([T-values for corresponding t-value], t-value)
+    # t_end - last t value
+    # text - text for the plot
 
     # make a figure
     fig = plt.figure()
     # One subplot
     ax = fig.add_subplot(111)
-    # plot x, T
-    ax.plot(xvec, Tvec, label="$T(x)$")
-    # plot the mean line
-    T_mean = np.mean(Tvec)
-    ax.hlines(T_mean, xmin=0, xmax=1, linestyles='--', color='g',
-               label='$T_{avg}='+'{:.2f}'.format(T_mean)+'^{\circ}C$')
+    for key in deltaT_dict:
+        Tvec = deltaT_dict[key][0]
+        t = deltaT_dict[key][1]
+        # plot x, T
+        if t == 0:
+            ax.plot(xvec, Tvec, label="$\delta T(0,x)$", linewidth=3, color="r", zorder=1e15)
+        elif t == t_end:
+            ax.plot(xvec, Tvec, label="$\delta T("+ str(t_end)+",x)$", linewidth=3, color="k")
+        else:
+            ax.plot(xvec, Tvec)
+
     # get the gid and sett axis labels
     ax.grid()
     ax.set_xlim(0, 1)
-    ax.set_ylim(-50, 50)
+    # ax.set_ylim(-50, 50)
     ax.set_xlabel("$x$")
     ax.set_ylabel("Temperature, $^{\circ}C$")
     ax.legend(loc=9, bbox_to_anchor=(0.5, -0.11), ncol=5)
     # plot title
-    ax.set_title("Temperature, $\delta T(x)$")
+    ax.set_title("$\delta T(t, x)=" + text + "$")
     # adjust
     plt.subplots_adjust(hspace=0.3)
 
     """Please uncomment to save the plot"""
-    # plt.savefig("TQwithx_s0" + str(int(round(x_s, 2) * 100)) + ".pdf", bbox_inches='tight')
+    # plt.savefig("Q10Omega" + str(omega) +".pdf", bbox_inches='tight')
 
     # show the plot
     plt.show()
 
-
-def getA(N, useavg=False):
+def getA(N):
     # function to get the FDM matrix A
     # N - Number of interior nodes
     # useavg - use the average as "BC", default False
@@ -109,45 +114,84 @@ def getA(N, useavg=False):
     A[N + 1, N + 1] = - 2 * D / h - B_out
     A[N + 1, N] = 2 * D / h
 
-
-
     return A
 
 
-def TQsolver(N, x_s, ifprint=True, ifplot=True, useavg=True):
-    # function to solve for T and Q, and ifplot=True pmake a plot
-    # N - Number of interior nodes
-    # x_s - position of the ice-cap
-    # ifprint - pint info to user, default True
-    # ifplot - make a plot of x and T, default True
-    # useavg - use the average as "BC", default True
+def Trap(N, M, u0, omega, t_end, savestep=5):
+    # function to preform the A-stable implicit trapezoid rule, u = deltaT
+    # N - number of internal nodes
+    # M - number of time-steps to split interval [0, T] into
+    # u0 - function pointer to deltaT at t=0
+    # omega - the parameter omega for u0
+    # t_end - end time
+    # savestep - save values that have j = 10 * m, always save 0 and t_end, default 5
 
-    # get A, b, F, k, x_sk
-    A, b, F, k, x_sk = getAbF(N, x_s, ifprint, useavg)
-    # the x-vector
+    # get the time - step
+    k = t_end / M
+    k2 = k / 2
+
+    # values of x in the uniform grid
     xvec = np.linspace(0, 1, N + 2)
-    # solve for T and Q
-    TQvec = spsolve(A.tocsr(), b)
-    # T values are the first values, Q is the last
-    Tvec = TQvec[:-1]
-    Q = TQvec[-1]
-    if ifprint:
-        print("x_s = ", x_sk, "gives Q = ", Q, "Q_qoal = ", Q_goal, "Absolute difference ", abs(Q - Q_goal))
-    if ifplot:
-        plotTx(xvec, Tvec, x_sk)
-    return Tvec, Q, x_sk
+    # dictionary to store u
+    u_dict = dict()
 
+    # get the FDM matrix A
+    A = getA(N)
+    # the identity
+    I = sparse.identity(A.shape[0])
+    # the lhs matrix
+    lhs = (I - k2 * A).tocsr()
+    # the rhs matrix, B
+    B = (I + k2 * A).tocsr()
 
+    # Initial setup
+    u_current = u0(xvec, omega)
 
+    # save time-picture
+    u_dict[0] = [u_current, 0]
+    savecount = 1
+
+    for j in range(1, M + 1):
+        # the time
+        tk1 = j * k
+        # the right hand side vector
+        rhs = B @ u_current
+        # next u
+        u_next = spsolve(lhs, rhs)
+
+        # save time-picture
+        if j % savestep == 0 or j == M:
+            u_dict[savecount] = [u_next, tk1]
+            savecount += 1
+
+        # update
+        u_current = u_next
+
+    return u_dict
 
 
 # number of interior nodes
 N = 1000
+M = 500
+# values of x in the uniform grid
+xvec = np.linspace(0, 1, N + 2)
 
-Tvec, Q, x_sk = TQsolver(N, x_s, ifprint=False, useavg=False)
-print("-"*40)
-# position of ice cap.
-Tvec2, Q2, x_sk2 = TQsolver(N, x_s)
+# choosing to test 1/100 * sin(omega * np.pi * x)
+text_gen = "\\frac{1}{100}sin("
+deltaT0 = lambda x, omega=1: 0.01 * np.sin(omega * np.pi * x)
+t_end = 1
+
+omega = 2
+deltaT_dict = Trap(N, M, deltaT0, omega, t_end)
+text = text_gen + str(omega) + "\pi x)"
+plotTx(xvec, deltaT_dict, t_end, text, omega)
+
+omega = 4
+deltaT_dict1 = Trap(N, M, deltaT0, omega, t_end)
+text = text_gen + str(omega) + "\pi x)"
+plotTx(xvec, deltaT_dict1, t_end, text, omega)
+
+
 
 
 
